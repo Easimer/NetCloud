@@ -138,6 +138,13 @@ static void ReceiveClientCommand(Client& cli) {
 			case CMD_SIZE:
 				HandleFileSize(cli, (Packet_File_Generic_Path*)bufPktData);
 				break;
+			case CMD_FORGET:
+			case CMD_DELETE: // From the viewpoint of the remote, these are equal
+				HandleFileDelete(
+						cli,
+						(Packet_File_Generic_Path*)bufPktData,
+						hdr.cmd);
+				break;
 			default:
 				printf("UNKNOWN COMMAND 0x%x\n", hdr.cmd);
 				break;

@@ -39,4 +39,19 @@ FILE* fopen_nc(const char* pchPath, const char* pchMode, unsigned long long user
 	}
 }
 
-void remove_nc(const char* pchPath, unsigned long long userID, unsigned long long appID);
+void remove_nc(const char* pchPath, unsigned long long userID, unsigned long long appID) {
+	char baseDir[2048];
+	char filePath[2048];
+	EnsureUserAppDirExists(userID, appID);
+
+	snprintf(baseDir, 2048, NETCLOUD_BASEDIR "/%llu/%llu", userID, appID);
+
+	snprintf(filePath, 2048, "%s/%s", baseDir, pchPath);
+
+	if(strcmp(dirname(filePath), baseDir) == 0) {
+		snprintf(filePath, 2048, "%s/%s", baseDir, pchPath);
+		remove(filePath);
+	} else {
+		printf("Bad directories: %s %s\n", baseDir, filePath);
+	}
+}

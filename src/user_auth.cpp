@@ -15,7 +15,7 @@ bool CreateSessionKeyForUser(
 	assert(bufSessionKey && shared);
 
 	if(userID > 0) {
-		res = sqlite3_open_v2("/var/lib/netcloud/auth.db", &pDB, SQLITE_OPEN_READONLY);
+		res = sqlite3_open_v2("/var/lib/netcloud/auth.db", &pDB, SQLITE_OPEN_READONLY, "unix");
 		if(res == SQLITE_OK) {
 			res = sqlite3_prepare_v3(pDB, "SELECT Key FROM user WHERE SteamID=?", -1, 0, &pStmt, NULL);
 			if(res == SQLITE_OK) {
