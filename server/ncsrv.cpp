@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netcloud/protocol.h>
@@ -221,8 +222,17 @@ static int ServerLoop() {
 
 		sockClient = accept(sockServer, (sockaddr*)&caddr, &clen);
 		if(sockClient > 0) {
-			if(fork() == 0) {
-				ProcessClient(sockClient, &caddr);
+			int pidChild = fork();
+			if(pidChild == 0) {
+				int pidGrandchild = fork();
+				if(pidGrandchild == 0) {
+					ProcessClient(sockClient, &caddr);
+				} else {
+					_exit(0);
+				}
+			} else {
+				int wstatus;
+				waitpid(pidChild, &wstatus, 0);
 			}
 		} else {
 			perror("accept failed");

@@ -24,7 +24,7 @@ void HandleFileWrite(Client& cli, Packet_File_Write* pkt) {
 		assert(filename);
 		memcpy(filename, pktPath, pkt->cubFileName);
 		filename[pkt->cubFileName] = 0;
-		printf("Client %ld is writing file '%s'\n", filename);
+		printf("Client %ld is writing file '%s'\n", cli.userID, filename);
 		f = fopen_nc(filename, "wb", cli.userID, cli.appID);
 		// TODO: Do bounds check
 		if(f) {

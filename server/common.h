@@ -1,6 +1,6 @@
 #pragma once
 
-#include "protocol.h"
+#include <netcloud/protocol.h>
 
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
