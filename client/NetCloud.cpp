@@ -27,7 +27,6 @@ static void SignBytes(HMAC_MD hmac, const void* buf, unsigned len, const Session
     unsigned int cubMD = sizeof(HMAC_MD);
     assert(hmac && buf && session);
 
-    Log()->printf("NetCloud: H(sha256, session, %d, buf, %d, hmac, &%d)", sizeof(Session_Key), len, cubMD);
     HMAC(EVP_sha256(), session, sizeof(Session_Key), (unsigned char*)buf, len, hmac, &cubMD);
 }
 
@@ -85,28 +84,6 @@ static void SignClientPacket(Packet_File_Generic_Path& packet, const Session_Key
     HMAC_CTX_cleanup(&ctx);
 }
 
-static void PrintBytes(Session_Key bytes) {
-    char buf[256];
-    buf[0] = 0;
-    for (int i = 0; i < SESSION_KEY_LEN; i++) {
-        char buf2[32] = { 0 };
-        snprintf(buf2, 32, "%x:", bytes[i]);
-        strcat(buf, buf2);
-    }
-    Log()->printf("NetCloud: Session key: %s\n", buf);
-}
-
-static void PrintBytes(const char* label, HMAC_MD bytes) {
-    char buf[256];
-    buf[0] = 0;
-    for (int i = 0; i < SESSION_KEY_LEN; i++) {
-        char buf2[32] = { 0 };
-        snprintf(buf2, 32, "%x:", bytes[i]);
-        strcat(buf, buf2);
-    }
-    Log()->printf("NetCloud: %s: %s\n", label, buf);
-}
-
 static void CreateSessionKey(Session_Key& session, const uint8 shared[64], const char* userKey) {
     unsigned int cubMD = sizeof(Session_Key);
     assert(session && shared && userKey);
@@ -124,7 +101,6 @@ public:
 
         ENGINE_load_builtin_engines();
         ENGINE_register_all_complete();
-        Log()->printf("OpenSSL engine init done");
     }
 
     virtual void Release() override {
@@ -151,14 +127,12 @@ public:
 
         res = getaddrinfo("steamworks.easimer.net", NETCLOUD_PORT, &hints, &addr);
         if (res != 0) {
-            Log()->fprintf(log_urgent, "NetCloud: failed to resolve steamworks.easimer.net\n");
             return NetCloudResult::Network;
         }
 
         for (ptr = addr; ptr; ptr = ptr->ai_next) {
             m_hSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
             if (m_hSocket == INVALID_SOCKET) {
-                Log()->fprintf(log_urgent, "NetCloud: failed to open socket\n");
                 return NetCloudResult::Network;
             }
 
@@ -174,11 +148,8 @@ public:
         freeaddrinfo(addr);
 
         if (m_hSocket == INVALID_SOCKET) {
-            Log()->fprintf(log_urgent, "NetCloud: couldn't connect to steamworks.easimer.net (can't find a working protocol!)\n");
             return NetCloudResult::Network;
         }
-
-        Log()->printf("NetCloud: connected!\n");
 
         m_iUserID = userID;
         m_pchKey = new char[strlen(userKey) + 1];
@@ -198,10 +169,8 @@ public:
         recv(m_hSocket, (char*)&pktChallenge, sizeof(pktChallenge), 0);
         // Create session key
         CreateSessionKey(m_sessionKey, pktChallenge.shared, m_pchKey);
-        PrintBytes(m_sessionKey);
         // Sign the challenge
         SignBytes(pktAnswer.answer, pktChallenge.challenge, 32, m_sessionKey);
-        PrintBytes("Challenge answer", pktAnswer.answer);
         // Send response
         pktAnswer.hdr.cmd = CMD_AUTH;
         pktAnswer.hdr.len = sizeof(pktAnswer);
@@ -214,15 +183,12 @@ public:
         assert(pktResult.hdr.cmd == CMD_AUTHRES);
         if (AuthenticateServerPacket(pktResult, m_sessionKey)) {
             if (pktResult.result) {
-                Log()->fprintf(log_urgent, "NetCloud: received auth result: OK");
                 m_state = NCState::Operation;
             } else {
-                Log()->fprintf(log_urgent, "NetCloud: received auth result: fail");
                 m_state = NCState::LoggedOut;
                 return NetCloudResult::Unauthorized;
             }
         } else {
-            Log()->fprintf(log_urgent, "NetCloud: received auth result, but couldn't auth it!! (res=%u)", pktResult.result);
             m_state = NCState::LoggedOut;
             return NetCloudResult::Network;
         }
@@ -256,8 +222,6 @@ public:
             wr.hdr.len = sizeof(wr) + wr.cubFileName + wr.cubFileContents;
             memset(wr.hdr.hmac, 0, HMAC_LEN);
 
-            Log()->printf("NetCloud: FileWrite: calculating HMAC\n");
-
             HMAC_CTX_init(&ctx);
             HMAC_Init_ex(&ctx, m_sessionKey, SESSION_KEY_LEN, EVP_sha256(), NULL);
             HMAC_Update(&ctx, (unsigned char*)&wr, sizeof(wr));
@@ -266,20 +230,13 @@ public:
             HMAC_Final(&ctx, wr.hdr.hmac, &cubMD);
             HMAC_CTX_cleanup(&ctx);
 
-            Log()->printf("NetCloud: FileWrite: calculated HMAC\n");
-
             // Send file write request
             res  = send(m_hSocket, (char*)&wr, sizeof(wr), 0);
             res += send(m_hSocket, (char*)pchFile, wr.cubFileName, 0);
             res += send(m_hSocket, (char*)pvData, wr.cubFileContents, 0);
 
-            Log()->printf("NetCloud: FileWrite: sent request %d\n", res);
-            PrintBytes("NetCloud: FileWrite", wr.hdr.hmac);
-
             // Receive file write confirmation
             res = recv(m_hSocket, (char*)&wrr, sizeof(wrr), 0);
-
-            Log()->printf("NetCloud: FileWrite: received result\n");
 
             if (AuthenticateServerPacket(wrr, m_sessionKey)) {
                 return wrr.result == 0x01 ? NetCloudResult::OK : NetCloudResult::Fail;
@@ -287,7 +244,6 @@ public:
                 return NetCloudResult::Fail;
             }
         } else {
-            Log()->printf("NetCloud: FileWrite failed: not in Operating state!\n");
             return NetCloudResult::Fail;
         }
     }
@@ -317,9 +273,6 @@ public:
             // Send file write request
             res  = send(m_hSocket, (char*)&rr, sizeof(rr), 0);
             res += send(m_hSocket, (char*)pchFile, rr.cubFileName, 0);
-
-            Log()->printf("NetCloud: FileRead: sent request %d\n", res);
-            PrintBytes("NetCloud: FileRead", rr.hdr.hmac);
 
             // Receive file read result header
             res = recv(m_hSocket, (char*)&rrr, sizeof(rrr), 0);
@@ -352,15 +305,12 @@ public:
             if (memcmp(hmacCalculatedResult, hmacResultOriginal, HMAC_LEN) == 0) {
                 *cubData = rrr.readBytes;
 
-                Log()->printf("NetCloud: FileRead: success (%d bytes)", rrr.readBytes);
                 return NetCloudResult::OK;
             } else {
                 *cubData = -1;
-                Log()->printf("NetCloud: FileRead: failure");
                 return NetCloudResult::Fail;
             }
         } else {
-            Log()->printf("NetCloud: FileWrite failed: not in Operating state!\n");
             return NetCloudResult::Fail;
         }
     }
@@ -388,8 +338,6 @@ public:
             HMAC_Update(&ctx, (unsigned char*)pchFile, pktReq.cubFileName);
             HMAC_Final(&ctx, pktReq.hdr.hmac, &cubMD);
             HMAC_CTX_cleanup(&ctx);
-
-            PrintBytes("NetCloud: FileExists HMAC", pktReq.hdr.hmac);
             
             res  = send(m_hSocket, (char*)&pktReq, sizeof(pktReq), 0);
             res += send(m_hSocket, (char*)pchFile, pktReq.cubFileName, 0);
@@ -451,22 +399,18 @@ public:
         if (m_state == NCState::Operation) {
             Packet_General_Result pktResult;
             
-            Log()->printf("NetCloud: looking for '%s'", pchFile);
             res = SendGenericPathCommand(CMD_EXISTS, pchFile);
 
             if(res == NetCloudResult::OK) {
                 res = ReceiveGenericResult(&pktResult);
 
                 if (res == NetCloudResult::OK) {
-                    Log()->printf("NetCloud: received result");
                     *pResult = pktResult.result == 0x01;
                     return NetCloudResult::OK;
                 } else {
-                    Log()->printf("NetCloud: didn't receive result");
                     return res;
                 }
             } else {
-                Log()->printf("NetCloud: couldn't send existence check");
                 return res;
             }
         } else {

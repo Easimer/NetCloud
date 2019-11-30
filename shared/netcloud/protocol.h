@@ -10,6 +10,12 @@ using uint64	= uint64_t;
 using int32	= int32_t;
 #endif /* NO_PROTO_TYPEDEFS */
 
+#define SESSION_KEY_LEN (32)
+#define HMAC_LEN (32)
+
+using Session_Key = unsigned char[SESSION_KEY_LEN];
+using HMAC_MD = unsigned char[HMAC_LEN];
+
 #pragma pack(push, 1)
 
 #define CMD_LOGIN       (0x01)
@@ -23,7 +29,11 @@ using int32	= int32_t;
 #define CMD_EXISTS      (0x14)
 #define CMD_SIZE        (0x15)
 
+#if WIN32
+#define NETCLOUD_PORT   "12124"
+#else
 #define NETCLOUD_PORT   12124
+#endif /* WIN32 */
 
 #define IGNORE_HMAC
 
