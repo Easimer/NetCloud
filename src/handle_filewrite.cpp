@@ -29,6 +29,7 @@ void HandleFileWrite(Client& cli, Packet_File_Write* pkt) {
 		// TODO: Do bounds check
 		if(f) {
 			pktResult.result = fwrite(pktContents, pkt->cubFileContents, 1, f);
+			fflush(f);
 			fclose(f);
 			printf("File '%s' has been written\n", filename);
 
