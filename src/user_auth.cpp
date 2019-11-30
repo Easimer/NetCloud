@@ -15,7 +15,7 @@ bool CreateSessionKeyForUser(
 	assert(bufSessionKey && shared);
 
 	if(userID > 0) {
-		res = sqlite3_open("/var/lib/netcloud/auth.db", &pDB);
+		res = sqlite3_open_v2("/var/lib/netcloud/auth.db", &pDB, SQLITE_OPEN_READONLY);
 		if(res == SQLITE_OK) {
 			res = sqlite3_prepare_v3(pDB, "SELECT Key FROM user WHERE SteamID=?", -1, 0, &pStmt, NULL);
 			if(res == SQLITE_OK) {
@@ -25,7 +25,6 @@ bool CreateSessionKeyForUser(
 						auto userKey = sqlite3_column_text(pStmt, 0);
 						if(userKey) {
 							CreateSessionKey(bufSessionKey, shared, (char*)userKey);
-							fprintf(stderr, "User %llu has key '%s'\n", userID, userKey);
 							ret = true;
 						} else {
 							fprintf(stderr, "User key is NULL!\n");
@@ -39,10 +38,10 @@ bool CreateSessionKeyForUser(
 			} else {
 				fprintf(stderr, "Couldn't prepare the SQL statement! (%d)\n", res);
 			}
-			sqlite3_close(pDB);
 		} else {
 			fprintf(stderr, "Failed to open auth DB! (%d)\n", res);
 		}
+		sqlite3_close(pDB);
 	} else {
 		fprintf(stderr, "Bad UserID: 0\n");
 	}
