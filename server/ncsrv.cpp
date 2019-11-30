@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netcloud/protocol.h>
 
 #include "common.h"
 #include "hmac.h"

@@ -25,6 +25,8 @@ using int32	= int32_t;
 
 #define NETCLOUD_PORT   12124
 
+#define IGNORE_HMAC
+
 struct Packet_Header {
     uint8 cmd;
     uint32 len;
@@ -35,7 +37,7 @@ struct Packet_Login {
     Packet_Header hdr;
     uint64 userID;
     uint64 appID;
-};
+} IGNORE_HMAC;
 
 // SessionKey = H(shared, key)
 // Answer = H(challenge, SessionKey)

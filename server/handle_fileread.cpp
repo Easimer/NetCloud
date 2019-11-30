@@ -1,6 +1,6 @@
 #include <assert.h>
 #include "common.h"
-#include "protocol.h"
+#include <netcloud/protocol.h>
 #include "packet_signing.h"
 #include "stdio_nc.h"
 #include <netdb.h>
