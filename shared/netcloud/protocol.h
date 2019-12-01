@@ -28,6 +28,11 @@ using HMAC_MD = unsigned char[HMAC_LEN];
 #define CMD_DELETE      (0x13)
 #define CMD_EXISTS      (0x14)
 #define CMD_SIZE        (0x15)
+#define CMD_ACHIEVEMENT (0x16)
+
+#define OP_ACHI_CLEAR   (0x00)
+#define OP_ACHI_GET     (0x01)
+#define OP_ACHI_SET     (0x02)
 
 #if WIN32
 #define NETCLOUD_PORT   "12124"
@@ -108,6 +113,13 @@ using Packet_File_Forget_Result = Packet_General_Result;
 struct Packet_File_Size_Result {
     Packet_Header hdr;
     int32 fileLength; // Length of the file contents in bytes
+};
+
+struct Packet_Achievement {
+    Packet_Header hdr;
+    uint8 op; // Achievement operation, see OP_ACHI_*
+    uint32 cubNameLen; // Length of the achievement identifier
+    // Achievement identifier
 };
 
 #pragma pack(pop)

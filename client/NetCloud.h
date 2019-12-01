@@ -20,6 +20,10 @@ public:
     virtual NetCloudResult FileDelete(bool* pResult, const char* pchFile) = 0;
     virtual NetCloudResult FileExists(bool* pResult, const char* pchFile) = 0;
     virtual NetCloudResult GetFileSize(int* result, const char* pchFile) = 0;
+
+	virtual NetCloudResult GetAchievement( const char *pchName, bool *pbAchieved ) = 0;
+	virtual NetCloudResult SetAchievement( const char *pchName ) = 0;
+	virtual NetCloudResult ClearAchievement( const char *pchName ) = 0;
 };
 
 INetCloudSession* CreateNetCloudSession();
