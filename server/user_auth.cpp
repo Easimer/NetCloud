@@ -1,8 +1,8 @@
 #include <assert.h>
-#include <sqlite3.h>
 #include "common.h"
 #include "hmac.h"
 #include "user_auth.h"
+#include "db.h"
 
 bool CreateSessionKeyForUser(
 		unsigned char bufSessionKey[32],
@@ -15,8 +15,8 @@ bool CreateSessionKeyForUser(
 	assert(bufSessionKey && shared);
 
 	if(userID > 0) {
-		res = sqlite3_open_v2("/var/lib/netcloud/auth.db", &pDB, SQLITE_OPEN_READONLY, "unix");
-		if(res == SQLITE_OK) {
+		pDB=  OpenDatabase();
+		if(pDB != NULL) {
 			res = sqlite3_prepare_v3(pDB, "SELECT Key FROM user WHERE SteamID=?", -1, 0, &pStmt, NULL);
 			if(res == SQLITE_OK) {
 				res = sqlite3_bind_int64(pStmt, 1, userID);
@@ -38,10 +38,10 @@ bool CreateSessionKeyForUser(
 			} else {
 				fprintf(stderr, "Couldn't prepare the SQL statement! (%d)\n", res);
 			}
+			sqlite3_finalize(pStmt);
 		} else {
 			fprintf(stderr, "Failed to open auth DB! (%d)\n", res);
 		}
-		sqlite3_close(pDB);
 	} else {
 		fprintf(stderr, "Bad UserID: 0\n");
 	}

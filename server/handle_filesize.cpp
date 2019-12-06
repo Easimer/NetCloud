@@ -25,7 +25,7 @@ void HandleFileSize(Client& cli, Packet_File_Generic_Path* pkt) {
 		assert(filename);
 		memcpy(filename, pktPath, pkt->cubFileName);
 		filename[pkt->cubFileName] = 0;
-		printf("Client %ld is looking for file '%s'\n", filename);
+		printf("Client %ld is looking for file '%s'\n", cli.userID, filename);
 		f = fopen_nc(filename, "rb", cli.userID, cli.appID);
 		// TODO: Do bounds check
 		if(f) {

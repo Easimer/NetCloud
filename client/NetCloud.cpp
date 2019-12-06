@@ -442,6 +442,103 @@ public:
         }
     }
 
+    NetCloudResult SendAchievementOperationPacket(const char* pchName, int op) {
+        NetCloudResult ret = NetCloudResult::Fail;
+        HMAC_CTX ctx;
+        unsigned int cubMD = 32;
+        int res;
+        Packet_Achievement pktAchi;
+
+        assert(pchName);
+
+        pktAchi.hdr.cmd = CMD_ACHIEVEMENT;
+        pktAchi.cubNameLen = strlen(pchName);
+        pktAchi.op = op;
+        pktAchi.hdr.len = sizeof(pktAchi) + pktAchi.cubNameLen;
+
+        memset(pktAchi.hdr.hmac, 0, HMAC_LEN);
+
+        HMAC_CTX_init(&ctx);
+        HMAC_Init_ex(&ctx, m_sessionKey, SESSION_KEY_LEN, EVP_sha256(), NULL);
+        HMAC_Update(&ctx, (unsigned char*)&pktAchi, sizeof(pktAchi));
+        HMAC_Update(&ctx, (unsigned char*)pchName, pktAchi.cubNameLen);
+        HMAC_Final(&ctx, pktAchi.hdr.hmac, &cubMD);
+        HMAC_CTX_cleanup(&ctx);
+
+        res = send(m_hSocket, (char*)&pktAchi, sizeof(pktAchi), 0);
+        res += send(m_hSocket, (char*)pchName, pktAchi.cubNameLen, 0);
+        assert(res == sizeof(pktAchi) + pktAchi.cubNameLen);
+
+        if (res == sizeof(pktAchi) + pktAchi.cubNameLen) {
+            return NetCloudResult::OK;
+        } else {
+            return NetCloudResult::Network;
+        }
+
+        return ret;
+    }
+
+    virtual NetCloudResult GetAchievement(const char* pchName, bool* pbAchieved) override {
+        auto ret = NetCloudResult::Fail;
+        Packet_General_Result pktResult;
+        assert(pchName && pbAchieved);
+
+        if (m_state == NCState::Operation) {
+            auto res = SendAchievementOperationPacket(pchName, OP_ACHI_GET);
+            if (res == NetCloudResult::OK) {
+                res = ReceiveFixedSizePacket(&pktResult);
+                if (res == NetCloudResult::OK) {
+                    *pbAchieved = pktResult.result == 0x01;
+                    ret = NetCloudResult::OK;
+                }
+            } else {
+                ret = res;
+            }
+        }
+
+        return ret;
+    }
+
+    virtual NetCloudResult SetAchievement(const char* pchName) override {
+        auto ret = NetCloudResult::Fail;
+        Packet_General_Result pktResult;
+        assert(pchName);
+
+        if (m_state == NCState::Operation) {
+            auto res = SendAchievementOperationPacket(pchName, OP_ACHI_SET);
+            if (res == NetCloudResult::OK) {
+                res = ReceiveFixedSizePacket(&pktResult);
+                if (res == NetCloudResult::OK) {
+                    ret = pktResult.result == 0x01 ? NetCloudResult::OK : NetCloudResult::Fail;
+                }
+            } else {
+                ret = res;
+            }
+        }
+
+        return ret;
+    }
+
+    virtual NetCloudResult ClearAchievement(const char* pchName) override {
+        auto ret = NetCloudResult::Fail;
+        Packet_General_Result pktResult;
+        assert(pchName);
+
+        if (m_state == NCState::Operation) {
+            auto res = SendAchievementOperationPacket(pchName, OP_ACHI_CLEAR);
+            if (res == NetCloudResult::OK) {
+                res = ReceiveFixedSizePacket(&pktResult);
+                if (res == NetCloudResult::OK) {
+                    ret = pktResult.result == 0x01 ? NetCloudResult::OK : NetCloudResult::Fail;
+                }
+            } else {
+                ret = res;
+            }
+        }
+
+        return ret;
+    }
+
 private:
     SOCKET m_hSocket;
     char* m_pchKey;

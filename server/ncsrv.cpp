@@ -18,6 +18,7 @@
 #include "handlers.h"
 #include "packet_signing.h"
 #include "user_auth.h"
+#include "db.h"
 
 static bool isShutdown;
 
@@ -109,23 +110,23 @@ static void ReceiveClientCommand(Client& cli) {
 		cubRecvLeft = hdr.len - sizeof(hdr);
 		cur = bufPktData + sizeof(hdr);
 
-		printf("Receiving data from client %ld\n", cli.userID);
+		//printf("Receiving data from client %ld\n", cli.userID);
 
 		while(cubRecvLeft > 0) {
 			res = recv(cli.socket, cur, cubRecvLeft, 0);
 			if(res > 0) {
 				cubRecvLeft -= res;
 				cur += res;
-				printf("Receiving data from client %ld: %ld bytes, %lu bytes remain\n", cli.userID, res, cubRecvLeft);
+				//printf("Receiving data from client %ld: %ld bytes, %lu bytes remain\n", cli.userID, res, cubRecvLeft);
 			} else {
-				printf("Client %u timed out\n", cli.userID);
+				fprintf(stderr, "Client %u timed out\n", cli.userID);
 				delete[] bufPktData;
 				cli.state = ClientState::End;
 				return;
 			}
 		}
 
-		printf("Received payload %ld\n", hdr.len);
+		//printf("Received payload %ld\n", hdr.len);
 
 		switch(hdr.cmd) {
 			case CMD_WRITE:
@@ -147,6 +148,9 @@ static void ReceiveClientCommand(Client& cli) {
 						(Packet_File_Generic_Path*)bufPktData,
 						hdr.cmd);
 				break;
+			case CMD_ACHIEVEMENT:
+				HandleAchievement(cli, (Packet_Achievement*)bufPktData);
+				break;
 			default:
 				printf("UNKNOWN COMMAND 0x%x\n", hdr.cmd);
 				break;
@@ -165,7 +169,7 @@ static void ProcessClient(int sock, const sockaddr_in* addr) {
 		cli.socket = sock;
 		cli.state = ClientState::Start;
 		cli.hmacCtx = HMAC_CTX_new();
-		printf("Client connected!\n");
+		printf("Incoming connection %d\n", sock);
 
 		while(cli.state != ClientState::End) {
 			switch(cli.state) {
@@ -180,6 +184,8 @@ static void ProcessClient(int sock, const sockaddr_in* addr) {
 					break;
 			}
 		}
+
+		CloseDatabase();
 
 		close(sock);
 		HMAC_CTX_free(cli.hmacCtx);
