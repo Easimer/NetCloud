@@ -40,12 +40,18 @@ using HMAC_MD = unsigned char[HMAC_LEN];
 #define NETCLOUD_PORT   12124
 #endif /* WIN32 */
 
+#define NETCLOUD_PROTOCOL_VERSION (1)
+
 #define IGNORE_HMAC
 
 struct Packet_Header {
+    uint8 ver;
     uint8 cmd;
+    uint8 flags;
+    uint8 unused;
     uint32 len;
-    unsigned char hmac[32];
+    // [ ... Payload ... ]
+    // unsigned char hmac[32];
 };
 
 struct Packet_Login {
@@ -123,3 +129,7 @@ struct Packet_Achievement {
 };
 
 #pragma pack(pop)
+
+inline Packet_Header MakeHeader(uint8 cmd, uint32 len) {
+       return { NETCLOUD_PROTOCOL_VERSION, cmd, 0, 0, len };
+}
