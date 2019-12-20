@@ -131,7 +131,7 @@ struct Packet_Achievement {
 
 struct Packet_Achievement_Bulk_Result {
     Packet_Header hdr;
-    uint32 cuAchievements;
+    uint8 op; // OP_ACHI_BLKGET
 };
 
 #pragma pack(pop)
