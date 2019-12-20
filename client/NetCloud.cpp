@@ -49,6 +49,7 @@ static void Begin(SignedPacket& pkt, SOCKET s, const Session_Key& session) {
     HMAC_CTX_init(&pkt.ctx);
     HMAC_Init_ex(&pkt.ctx, session, SESSION_KEY_LEN, EVP_sha256(), NULL);
     pkt.c = 0; // init:0, sending:1, recving:2
+    pkt.socket = s;
 }
 
 static int Send(SignedPacket& pkt, const void* buf, int len) {
@@ -82,6 +83,8 @@ static bool End(SignedPacket& pkt) {
     unsigned char hmacCalc[32];
     unsigned char hmacRecv[32];
     bool ret;
+    
+    memset(hmacCalc, 0, 32);
     
     HMAC_Final(&pkt.ctx, hmacCalc, &cubMD);
     HMAC_CTX_cleanup(&pkt.ctx);
@@ -168,8 +171,6 @@ public:
         m_pchKey = new char[strlen(userKey) + 1];
         memcpy(m_pchKey, userKey, strlen(userKey) + 1);
         
-        //Begin(pkt, m_hSocket, m_sessionKey);
-        BEGIN_PACKET(pkt);
         // Send a CMD_LOGIN
         //pktLogin.hdr.cmd = CMD_LOGIN;
         //pktLogin.hdr.len = sizeof(pktLogin);
@@ -177,9 +178,7 @@ public:
         //memset(pktLogin.hdr.hmac, 0, 32);
         pktLogin.userID = userID;
         pktLogin.appID = appID;
-        //send(m_hSocket, (char*)&pktLogin, sizeof(pktLogin), 0);
-        Send(pkt, pktLogin);
-        End(pkt);
+        send(m_hSocket, (char*)&pktLogin, sizeof(pktLogin), 0);
 
         m_state = NCState::SentLogin;
 
@@ -187,6 +186,7 @@ public:
         //Begin(pkt, m_hSocket, m_sessionKey);
         BEGIN_PACKET(pkt);
         Recv(pkt, pktChallenge);
+        End(pkt);
         //recv(m_hSocket, (char*)&pktChallenge, sizeof(pktChallenge), 0);
         // Create session key
         CreateSessionKey(m_sessionKey, pktChallenge.shared, m_pchKey);
@@ -199,6 +199,7 @@ public:
         pktAnswer.hdr = MakeHeader(CMD_AUTH, sizeof(pktAnswer));
         //SignClientPacket(pktAnswer, m_sessionKey);
         //send(m_hSocket, (char*)&pktAnswer, sizeof(pktAnswer), 0);
+        BEGIN_PACKET(pkt);
         Send(pkt, pktAnswer);
         End(pkt);
         m_state = NCState::AnswerSent;
