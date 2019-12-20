@@ -533,8 +533,6 @@ public:
         Packet_Achievement pktAchi;
         SignedPacket pkt;
 
-        assert(pchName);
-
         //pktAchi.hdr.cmd = CMD_ACHIEVEMENT;
         if(pchName) {
             pktAchi.cubNameLen = strlen(pchName);
@@ -580,8 +578,15 @@ public:
 
         if (m_state == NCState::Operation) {
             if(!m_achiCacheInvalid) {
-                *pbAchieved = m_achiCache[pchName];
+                if (m_achiCache.count(pchName)) {
+                    *pbAchieved = m_achiCache[pchName];
+                } else {
+                    *pbAchieved = false;
+                }
                 ret = NetCloudResult::OK;
+            } else {
+                CacheAchievements();
+                ret = GetAchievement(pchName, pbAchieved);
             }
         }
 
@@ -633,6 +638,7 @@ public:
     void CacheAchievements() {
         Packet_Achievement_Bulk_Result pktResult;
         Signed_Packet sp;
+        uint32 cubNameLen = 0;
         
         m_achiCacheInvalid = true;
         m_achiCache.clear();
@@ -644,18 +650,15 @@ public:
                 
                 Recv(sp, pktResult);
                 
-                char buf[256];
-                
-                for(uint32 i = 0; i < pktResult.cuAchievements; i++) {
-                    uint32 cubNameLen;
-                    uint8 bState;
+                char buf[1024];
+
+                do {
                     Recv(sp, cubNameLen);
-                    assert(cubNameLen < 256);
+                    assert(cubNameLen < 1024);
                     Recv(sp, buf, cubNameLen);
                     buf[cubNameLen] = 0;
-                    Recv(sp, bState);
-                    m_achiCache[buf] = bState;
-                }
+                    m_achiCache[buf] = true;
+                } while (cubNameLen != 0);
                 
                 if(End(sp)) {
                     m_achiCacheInvalid = false;
