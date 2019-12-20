@@ -15,29 +15,26 @@ void HandleFileDelete(Client& cli, Packet_File_Generic_Path* pkt, int cmdOrig) {
 	int res;
 	FILE* f;
 	char* filename;
+	const char* pktPath;
+
 	Packet_File_Delete_Result pktResult;
-	pktResult.hdr.len = sizeof(pktResult);
-	pktResult.hdr.cmd = cmdOrig;
-	printf("Processing file delete request from user %ld\n", cli.userID);
-	if(AuthenticateClientPacket(pkt, pkt->hdr.len, cli)) {
-		const char* pktPath = (const char*)(pkt + 1);
-		filename = new char[pkt->cubFileName + 1];
-		assert(filename);
-		memcpy(filename, pktPath, pkt->cubFileName);
-		filename[pkt->cubFileName] = 0;
-		printf("Client %ld is deleting file '%s'\n", filename);
+	Signed_Packet sp;
 
-		remove_nc(filename, cli.userID, cli.appID);
-		pktResult.result = 1;
+	pktResult.hdr = MakeHeader(cmdOrig, sizeof(pktResult));
 
-		delete[] filename;
-	} else {
-		pktResult.result = 0;
-		printf("Failed to auth delete request\n");
-	}
+	pktPath = (const char*)(pkt + 1);
+	filename = new char[pkt->cubFileName + 1];
+	assert(filename);
+	memcpy(filename, pktPath, pkt->cubFileName);
+	filename[pkt->cubFileName] = 0;
+	printf("Client %ld is deleting file '%s'\n", cli.userID, filename);
 
-	printf("Sending delete request result\n");
-	SignServerPacket(pktResult, cli.sessionKey);
-	res = send(cli.socket, &pktResult, sizeof(pktResult), 0);
-	assert(res == sizeof(pktResult));
+	remove_nc(filename, cli.userID, cli.appID);
+	pktResult.result = 1;
+
+	Begin(sp, cli.socket, cli.sessionKey);
+	Send(sp, pktResult);
+	End(sp);
+
+	delete[] filename;
 }

@@ -12,61 +12,48 @@
 #include <openssl/hmac.h>
 
 void HandleFileRead(Client& cli, Packet_File_Read* pkt) {
-	int res;
+	int res, rd;
 	FILE* f;
 	char* filename;
-	char* bufContents = NULL;
+	char buf[4096];
 	Packet_File_Read_Result pktResult;
-	HMAC_CTX* ctx;
-	unsigned int cubMD = 32;
+	Signed_Packet sp;
+	//HMAC_CTX* ctx;
+	//unsigned int cubMD = 32;
 
-	memset(pktResult.hdr.hmac, 0, 32);
+	//memset(pktResult.hdr.hmac, 0, 32);
+
+	Begin(sp, cli.socket, cli.sessionKey);
 
 	printf("Processing file read request from user %ld\n", cli.userID);
-	if(AuthenticateClientPacket(pkt, pkt->hdr.len, cli)) {
-		const char* pktPath = (const char*)(pkt + 1);
-		bufContents = new char[pkt->maxReadBytes];
-		filename = new char[pkt->cubFileName + 1];
-		assert(filename);
-		memcpy(filename, pktPath, pkt->cubFileName);
-		filename[pkt->cubFileName] = 0;
-		printf("Client %ld is reading file '%s'\n", cli.userID, filename);
-		f = fopen_nc(filename, "rb", cli.userID, cli.appID);
-		// TODO: Do bounds check
-		if(f) {
-			pktResult.readBytes = fread(bufContents, 1, pkt->maxReadBytes, f);
-			fclose(f);
-			printf("File '%s' has been read\n", filename);
+	const char* pktPath = (const char*)(pkt + 1);
+	filename = new char[pkt->cubFileName + 1];
+	assert(filename);
+	memcpy(filename, pktPath, pkt->cubFileName);
+	filename[pkt->cubFileName] = 0;
+	printf("Client %ld is reading file '%s'\n", cli.userID, filename);
 
-			pktResult.hdr.cmd = CMD_READ;
-			pktResult.hdr.len = sizeof(pktResult) + pktResult.readBytes;
-		} else {
-			printf("Failed to open file\n");
-			delete[] bufContents;
+	f = fopen_nc(filename, "rb", cli.userID, cli.appID);
+	pktResult.readBytes = 0;
+	if(f) {
+		fseek(f, 0, SEEK_END);
+		pktResult.readBytes = ftell(f);
+		pktResult.hdr = MakeHeader(CMD_READ, sizeof(pktResult) + pktResult.readBytes);
+		Send(sp, pktResult);
+		fseek(f, 0, SEEK_SET);
+		rd = fread(buf, 1, 4096, f);
+		while(rd > 0) {
+			Send(sp, buf, rd);
+			rd = fread(buf, 1, 4096, f);
 		}
-		delete[] filename;
 	} else {
-		pktResult.hdr.cmd = CMD_READ;
-		pktResult.hdr.len = sizeof(pktResult);
+		pktResult.hdr = MakeHeader(CMD_READ, sizeof(pktResult));
 		pktResult.readBytes = -1;
-		printf("Failed to auth read request\n");
+		Send(sp, pktResult);
 	}
+	delete[] filename;
 
-	ctx = HMAC_CTX_new();
-	HMAC_Init_ex(ctx, cli.sessionKey, 32, EVP_sha256(), NULL);
-	HMAC_Update(ctx, (unsigned char*)&pktResult, sizeof(pktResult));
-
-	if(bufContents) {
-		HMAC_Update(ctx, (unsigned char*)bufContents, pktResult.readBytes);
-		HMAC_Final(ctx, pktResult.hdr.hmac, &cubMD);
-		res  = send(cli.socket, &pktResult, sizeof(pktResult), MSG_MORE);
-		res += send(cli.socket, bufContents, pktResult.readBytes, 0);
-		assert(res == sizeof(pktResult) + pktResult.readBytes);
-	} else {
-		HMAC_Final(ctx, pktResult.hdr.hmac, &cubMD);
-		send(cli.socket, &pktResult, sizeof(pktResult), 0);
-		assert(res == sizeof(pktResult));
+	if(!End(sp)) {
+		cli.state = ClientState::End;
 	}
-
-	HMAC_CTX_free(ctx);
 }

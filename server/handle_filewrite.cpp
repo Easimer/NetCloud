@@ -15,38 +15,33 @@ void HandleFileWrite(Client& cli, Packet_File_Write* pkt) {
 	int res;
 	FILE* f;
 	char* filename;
+	const char *pktPath, *pktContents;
 	Packet_File_Write_Result pktResult;
-	printf("Processing file write request from user %ld\n", cli.userID);
-	if(AuthenticateClientPacket(pkt, pkt->hdr.len, cli)) {
-		const char* pktPath = (const char*)(pkt + 1);
-		const char* pktContents = (const char*)(pktPath + pkt->cubFileName);
-		filename = new char[pkt->cubFileName + 1];
-		assert(filename);
-		memcpy(filename, pktPath, pkt->cubFileName);
-		filename[pkt->cubFileName] = 0;
-		printf("Client %ld is writing file '%s'\n", cli.userID, filename);
-		f = fopen_nc(filename, "wb", cli.userID, cli.appID);
-		// TODO: Do bounds check
-		if(f) {
-			pktResult.result = fwrite(pktContents, pkt->cubFileContents, 1, f);
-			fflush(f);
-			fclose(f);
-			printf("File '%s' has been written\n", filename);
+	Signed_Packet sp;
 
-			pktResult.hdr.cmd = CMD_WRITE;
-			pktResult.hdr.len = sizeof(pktResult);
-		}
-		delete[] filename;
-	} else {
-		pktResult.hdr.cmd = CMD_WRITE;
-		pktResult.hdr.len = sizeof(pktResult);
-		pktResult.result = 0;
-		printf("Failed to auth write request\n");
+	pktResult.hdr = MakeHeader(CMD_WRITE, sizeof(pktResult));
+	pktResult.result = 0;
+
+	printf("Processing file write request from user %ld\n", cli.userID);
+
+	pktPath = (const char*)(pkt + 1);
+	pktContents = (const char*)(pktPath + pkt->cubFileName);
+	filename = new char[pkt->cubFileName + 1];
+	assert(filename);
+	memcpy(filename, pktPath, pkt->cubFileName);
+	filename[pkt->cubFileName] = 0;
+	printf("Client %ld is writing file '%s'\n", cli.userID, filename);
+	f = fopen_nc(filename, "wb", cli.userID, cli.appID);
+
+	if(f) {
+		pktResult.result = fwrite(pktContents, pkt->cubFileContents, 1, f) == 1;
+		fclose(f);
+		printf("File '%s' has been written\n", filename);
 	}
 
-	printf("Sending write request result\n");
-	SignServerPacket(pktResult, cli.sessionKey);
-	res = send(cli.socket, &pktResult, sizeof(pktResult), 0);
-	assert(res == sizeof(pktResult));
-}
+	Begin(sp, cli.socket, cli.sessionKey);
+	Send(sp, pktResult);
+	End(sp);
 
+	delete[] filename;
+}

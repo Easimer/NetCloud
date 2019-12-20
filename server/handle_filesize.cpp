@@ -15,35 +15,32 @@ void HandleFileSize(Client& cli, Packet_File_Generic_Path* pkt) {
 	int res;
 	FILE* f;
 	char* filename;
+	const char* pktPath;
+
 	Packet_File_Size_Result pktResult;
-	pktResult.hdr.len = sizeof(pktResult);
-	pktResult.hdr.cmd = CMD_SIZE;
-	printf("Processing file size request from user %ld\n", cli.userID);
-	if(AuthenticateClientPacket(pkt, pkt->hdr.len, cli)) {
-		const char* pktPath = (const char*)(pkt + 1);
-		filename = new char[pkt->cubFileName + 1];
-		assert(filename);
-		memcpy(filename, pktPath, pkt->cubFileName);
-		filename[pkt->cubFileName] = 0;
-		printf("Client %ld is looking for file '%s'\n", cli.userID, filename);
-		f = fopen_nc(filename, "rb", cli.userID, cli.appID);
-		// TODO: Do bounds check
-		if(f) {
-			fseek(f, 0, SEEK_END);
-			pktResult.fileLength = ftell(f);
-			fclose(f);
-			printf("File '%s' has been opened\n", filename);
-		} else {
-			pktResult.fileLength = -1;
-		}
-		delete[] filename;
+	Signed_Packet sp;
+
+	pktResult.hdr = MakeHeader(CMD_SIZE, sizeof(pktResult));
+
+	pktPath = (const char*)(pkt + 1);
+	filename = new char[pkt->cubFileName + 1];
+	assert(filename);
+	memcpy(filename, pktPath, pkt->cubFileName);
+	filename[pkt->cubFileName] = 0;
+	printf("Client %ld is looking for file '%s'\n", cli.userID, filename);
+	f = fopen_nc(filename, "rb", cli.userID, cli.appID);
+	// TODO: Do bounds check
+	if(f) {
+		fseek(f, 0, SEEK_END);
+		pktResult.fileLength = ftell(f);
+		fclose(f);
 	} else {
 		pktResult.fileLength = -1;
-		printf("Failed to auth size request\n");
 	}
 
-	printf("Sending size request result\n");
-	SignServerPacket(pktResult, cli.sessionKey);
-	res = send(cli.socket, &pktResult, sizeof(pktResult), 0);
-	assert(res == sizeof(pktResult));
+	Begin(sp, cli.socket, cli.sessionKey);
+	Send(sp, pktResult);
+	End(sp);
+
+	delete[] filename;
 }
