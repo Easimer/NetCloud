@@ -33,6 +33,7 @@ using HMAC_MD = unsigned char[HMAC_LEN];
 #define OP_ACHI_CLEAR   (0x00)
 #define OP_ACHI_GET     (0x01)
 #define OP_ACHI_SET     (0x02)
+#define OP_ACHI_BLKGET  (0x03)
 
 #if WIN32
 #define NETCLOUD_PORT   "12124"
@@ -126,6 +127,11 @@ struct Packet_Achievement {
     uint8 op; // Achievement operation, see OP_ACHI_*
     uint32 cubNameLen; // Length of the achievement identifier
     // Achievement identifier
+};
+
+struct Packet_Achievement_Bulk_Result {
+    Packet_Header hdr;
+    uint32 cuAchievements;
 };
 
 #pragma pack(pop)

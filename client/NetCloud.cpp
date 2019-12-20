@@ -16,6 +16,10 @@
 
 #include <netcloud/protocol.h>
 
+#include <unordered_map>
+
+using Achi_Cache = std::unordered_map<std::string, bool>;
+
 enum class NCState {
     LoggedOut, // Before sending the login packet
     SentLogin,
@@ -44,6 +48,8 @@ struct SignedPacket {
     HMAC_CTX ctx;
     int c;
 };
+
+using Signed_Packet = SignedPacket;
 
 static void Begin(SignedPacket& pkt, SOCKET s, const Session_Key& session) {
     HMAC_CTX_init(&pkt.ctx);
@@ -111,7 +117,8 @@ public:
         m_hSocket(INVALID_SOCKET),
         m_pchKey(NULL),
         m_iUserID(0),
-        m_state(NCState::LoggedOut) {
+    m_state(NCState::LoggedOut),
+    m_achiCacheInvalid(true) {
         
         ENGINE_load_builtin_engines();
         ENGINE_register_all_complete();
@@ -133,7 +140,9 @@ public:
         Packet_Auth_Answer pktAnswer;
         Packet_Auth_Result pktResult;
         // Assuming that CDebugLog already initialized WSA
-
+        
+        m_achiCacheInvalid = true;
+        
         assert(m_state == NCState::LoggedOut);
 
         memset(&hints, 0, sizeof(hints));
@@ -235,6 +244,8 @@ public:
         }
         m_iUserID = 0;
         m_state = NCState::LoggedOut;
+        m_achiCacheInvalid = true;
+        m_achiCache.clear();
         return NetCloudResult::OK;
     }
 
@@ -525,7 +536,11 @@ public:
         assert(pchName);
 
         //pktAchi.hdr.cmd = CMD_ACHIEVEMENT;
-        pktAchi.cubNameLen = strlen(pchName);
+        if(pchName) {
+            pktAchi.cubNameLen = strlen(pchName);
+        } else {
+            pktAchi.cubNameLen = 0;
+        }
         pktAchi.op = op;
         //pktAchi.hdr.len = sizeof(pktAchi) + pktAchi.cubNameLen;
         pktAchi.hdr = MakeHeader(CMD_ACHIEVEMENT, sizeof(pktAchi) + pktAchi.cubNameLen);
@@ -544,7 +559,9 @@ public:
         //assert(res == sizeof(pktAchi) + pktAchi.cubNameLen);
         BEGIN_PACKET(pkt);
         res  = Send(pkt, pktAchi);
-        res += Send(pkt, pchName, pktAchi.cubNameLen);
+        if(pktAchi.cubNameLen > 0) {
+            res += Send(pkt, pchName, pktAchi.cubNameLen);
+        }
         ok = End(pkt);
 
         if (res == sizeof(pktAchi) + pktAchi.cubNameLen && ok) {
@@ -562,15 +579,9 @@ public:
         assert(pchName && pbAchieved);
 
         if (m_state == NCState::Operation) {
-            auto res = SendAchievementOperationPacket(pchName, OP_ACHI_GET);
-            if (res == NetCloudResult::OK) {
-                res = ReceiveFixedSizePacket(&pktResult);
-                if (res == NetCloudResult::OK) {
-                    *pbAchieved = pktResult.result == 0x01;
-                    ret = NetCloudResult::OK;
-                }
-            } else {
-                ret = res;
+            if(!m_achiCacheInvalid) {
+                *pbAchieved = m_achiCache[pchName];
+                ret = NetCloudResult::OK;
             }
         }
 
@@ -589,6 +600,7 @@ public:
                 if (res == NetCloudResult::OK) {
                     ret = pktResult.result == 0x01 ? NetCloudResult::OK : NetCloudResult::Fail;
                 }
+                m_achiCache[pchName] = true;
             } else {
                 ret = res;
             }
@@ -609,12 +621,48 @@ public:
                 if (res == NetCloudResult::OK) {
                     ret = pktResult.result == 0x01 ? NetCloudResult::OK : NetCloudResult::Fail;
                 }
+                m_achiCache[pchName] = false;
             } else {
                 ret = res;
             }
         }
 
         return ret;
+    }
+    
+    void CacheAchievements() {
+        Packet_Achievement_Bulk_Result pktResult;
+        Signed_Packet sp;
+        
+        m_achiCacheInvalid = true;
+        m_achiCache.clear();
+        
+        if (m_state == NCState::Operation) {
+            auto res = SendAchievementOperationPacket(NULL, OP_ACHI_BLKGET);
+            if (res == NetCloudResult::OK) {
+                BEGIN_PACKET(sp);
+                
+                Recv(sp, pktResult);
+                
+                char buf[256];
+                
+                for(uint32 i = 0; i < pktResult.cuAchievements; i++) {
+                    uint32 cubNameLen;
+                    uint8 bState;
+                    Recv(sp, cubNameLen);
+                    assert(cubNameLen < 256);
+                    Recv(sp, buf, cubNameLen);
+                    buf[cubNameLen] = 0;
+                    Recv(sp, bState);
+                    m_achiCache[buf] = bState;
+                }
+                
+                if(End(sp)) {
+                    m_achiCacheInvalid = false;
+                }
+            } else {
+            }
+        }
     }
 
 private:
@@ -623,6 +671,9 @@ private:
     uint64 m_iUserID;
     Session_Key m_sessionKey;
     NCState m_state;
+    
+    Achi_Cache m_achiCache;
+    bool m_achiCacheInvalid;
 };
 
 INetCloudSession* CreateNetCloudSession() {
