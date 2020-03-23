@@ -133,7 +133,6 @@ public:
         struct addrinfo hints;
         struct addrinfo *addr, *ptr;
         int res;
-        //unsigned char bufHMAC[32];
         SignedPacket pkt;
         Packet_Login pktLogin;
         Packet_Auth_Challenge pktChallenge;
@@ -181,10 +180,7 @@ public:
         memcpy(m_pchKey, userKey, strlen(userKey) + 1);
         
         // Send a CMD_LOGIN
-        //pktLogin.hdr.cmd = CMD_LOGIN;
-        //pktLogin.hdr.len = sizeof(pktLogin);
         pktLogin.hdr = MakeHeader(CMD_LOGIN, sizeof(pktLogin));
-        //memset(pktLogin.hdr.hmac, 0, 32);
         pktLogin.userID = userID;
         pktLogin.appID = appID;
         send(m_hSocket, (char*)&pktLogin, sizeof(pktLogin), 0);
@@ -192,32 +188,24 @@ public:
         m_state = NCState::SentLogin;
 
         // Receive challenge
-        //Begin(pkt, m_hSocket, m_sessionKey);
         BEGIN_PACKET(pkt);
         Recv(pkt, pktChallenge);
         End(pkt);
-        //recv(m_hSocket, (char*)&pktChallenge, sizeof(pktChallenge), 0);
         // Create session key
         CreateSessionKey(m_sessionKey, pktChallenge.shared, m_pchKey);
         delete[] m_pchKey;
         // Sign the challenge
         SignBytes(pktAnswer.answer, pktChallenge.challenge, 32, m_sessionKey);
         // Send response
-        //pktAnswer.hdr.cmd = CMD_AUTH;
-        //pktAnswer.hdr.len = sizeof(pktAnswer);
         pktAnswer.hdr = MakeHeader(CMD_AUTH, sizeof(pktAnswer));
-        //SignClientPacket(pktAnswer, m_sessionKey);
-        //send(m_hSocket, (char*)&pktAnswer, sizeof(pktAnswer), 0);
         BEGIN_PACKET(pkt);
         Send(pkt, pktAnswer);
         End(pkt);
         m_state = NCState::AnswerSent;
 
         // Receive auth result
-        //Begin(pkt, m_hSocket, m_sessionKey);
         BEGIN_PACKET(pkt);
         Recv(pkt, pktResult);
-        //recv(m_hSocket, (char*)&pktResult, sizeof(pktResult), 0);
         assert(pktResult.hdr.cmd == CMD_AUTHRES);
         if (End(pkt)) {
             if (pktResult.result) {
@@ -251,29 +239,19 @@ public:
 
     virtual NetCloudResult FileWrite(const char* pchFile, const void* pvData, int cubData) override {
         if (m_state == NCState::Operation) {
-            //unsigned int cubMD = 32;
-            //int res;
-            //HMAC_CTX ctx;
             SignedPacket pkt;
             Packet_File_Write wr;
             Packet_File_Write_Result wrr;
-            //wr.hdr.cmd = CMD_WRITE;
             wr.cubFileName = strlen(pchFile);
             wr.cubFileContents = cubData;
-            //wr.hdr.len = sizeof(wr) + wr.cubFileName + wr.cubFileContents;
             wr.hdr = MakeHeader(CMD_WRITE, sizeof(wr) + wr.cubFileName + wr.cubFileContents);
-            //memset(wr.hdr.hmac, 0, HMAC_LEN);
             
+            // Send file write request
             BEGIN_PACKET(pkt);
             Send(pkt, wr);
             Send(pkt, pchFile, wr.cubFileName);
             Send(pkt, pvData, wr.cubFileContents);
             End(pkt);
-
-            // Send file write request
-            //res  = send(m_hSocket, (char*)&wr, sizeof(wr), 0);
-            //res += send(m_hSocket, (char*)pchFile, wr.cubFileName, 0);
-            //res += send(m_hSocket, (char*)pvData, wr.cubFileContents, 0);
 
             // Receive file write confirmation
             BEGIN_PACKET(pkt);
@@ -290,66 +268,38 @@ public:
 
     virtual NetCloudResult FileRead(const char* pchFile, void* pvData, int* cubData) override {
         if (m_state == NCState::Operation) {
-            //unsigned int cubMD = 32;
-            //HMAC_MD hmacCalculatedResult, hmacResultOriginal;
             int res;
-            //HMAC_CTX ctx;
             Packet_File_Read rr;
             Packet_File_Read_Result rrr;
             SignedPacket pkt;
 
-            //rr.hdr.cmd = CMD_READ;
             rr.maxReadBytes = *cubData;
             rr.cubFileName = strlen(pchFile);
-            //rr.hdr.len = sizeof(rr) + rr.cubFileName;
-            //memset(rr.hdr.hmac, 0, HMAC_LEN);
             rr.hdr = MakeHeader(CMD_READ, sizeof(rr) + rr.cubFileName);
 
-            //HMAC_CTX_init(&ctx);
-            //HMAC_Init_ex(&ctx, m_sessionKey, SESSION_KEY_LEN, EVP_sha256(), NULL);
-            //HMAC_Update(&ctx, (unsigned char*)&rr, sizeof(rr));
-            //HMAC_Update(&ctx, (unsigned char*)pchFile, rr.cubFileName);
-            //HMAC_Final(&ctx, rr.hdr.hmac, &cubMD);
-            //HMAC_CTX_cleanup(&ctx);
-
             // Send file write request
-            //res  = send(m_hSocket, (char*)&rr, sizeof(rr), 0);
-            //res += send(m_hSocket, (char*)pchFile, rr.cubFileName, 0);
             BEGIN_PACKET(pkt);
             Send(pkt, rr);
             Send(pkt, pchFile, rr.cubFileName);
             End(pkt);
 
             // Receive file read result header
-            //res = recv(m_hSocket, (char*)&rrr, sizeof(rrr), 0);
             BEGIN_PACKET(pkt);
             Recv(pkt, rrr);
-
-            // Manual authentication
-            //memcpy(hmacResultOriginal, rrr.hdr.hmac, HMAC_LEN);
-            //memset(rrr.hdr.hmac, 0, HMAC_LEN);
-            //HMAC_CTX_init(&ctx);
-            //HMAC_Init_ex(&ctx, m_sessionKey, SESSION_KEY_LEN, EVP_sha256(), NULL);
-            //HMAC_Update(&ctx, (unsigned char*)&rrr, sizeof(rrr));
 
             int32 cubRecvLeft = rrr.readBytes;
             assert(rrr.readBytes <= *cubData);
             char* bufRecv = (char*)pvData;
 
             while (cubRecvLeft > 0) {
-                //res = recv(m_hSocket, bufRecv, cubRecvLeft, 0);
                 res = Recv(pkt, bufRecv, cubRecvLeft);
                 if (res > 0) {
-                    //HMAC_Update(&ctx, (unsigned char*)bufRecv, res);
                     cubRecvLeft -= res;
                     bufRecv += res;
                 } else {
                     // TODO: error handling
                 }
             }
-
-            //HMAC_Final(&ctx, hmacCalculatedResult, &cubMD);
-            //HMAC_CTX_cleanup(&ctx);
             
             if(End(pkt)) {
                 *cubData = rrr.readBytes;
@@ -358,15 +308,6 @@ public:
                 *cubData = -1;
                 return NetCloudResult::Fail;
             }
-
-            //if (memcmp(hmacCalculatedResult, hmacResultOriginal, HMAC_LEN) == 0) {
-                //*cubData = rrr.readBytes;
-
-                //return NetCloudResult::OK;
-            //} else {
-                //*cubData = -1;
-                //return NetCloudResult::Fail;
-            //}
         } else {
             return NetCloudResult::Fail;
         }
@@ -377,8 +318,6 @@ public:
     }
 
     NetCloudResult SendGenericPathCommand(int cmd, const char* pchFile) {
-            //HMAC_CTX ctx;
-            //unsigned int cubMD = 32;
         int res;
         bool ok;
         Packet_File_Generic_Path pktReq;
@@ -386,33 +325,20 @@ public:
         assert(pchFile);
         
         BEGIN_PACKET(pkt);
-            //pktReq.hdr.cmd = cmd;
-            pktReq.cubFileName = strlen(pchFile);
-        //pktReq.hdr.len = sizeof(pktReq) + pktReq.cubFileName;
+		pktReq.cubFileName = strlen(pchFile);
         pktReq.hdr = MakeHeader(cmd, sizeof(pktReq) + pktReq.cubFileName);
 
-            //memset(pktReq.hdr.hmac, 0, HMAC_LEN);
-
-            //HMAC_CTX_init(&ctx);
-            //HMAC_Init_ex(&ctx, m_sessionKey, SESSION_KEY_LEN, EVP_sha256(), NULL);
-            //HMAC_Update(&ctx, (unsigned char*)&pktReq, sizeof(pktReq));
-            //HMAC_Update(&ctx, (unsigned char*)pchFile, pktReq.cubFileName);
-            //HMAC_Final(&ctx, pktReq.hdr.hmac, &cubMD);
-            //HMAC_CTX_cleanup(&ctx);
-            
-            //res  = send(m_hSocket, (char*)&pktReq, sizeof(pktReq), 0);
-        //res += send(m_hSocket, (char*)pchFile, pktReq.cubFileName, 0);
         res  = Send(pkt, pktReq);
         res += Send(pkt, pchFile, pktReq.cubFileName);
-            assert(res == sizeof(pktReq) + pktReq.cubFileName);
+		assert(res == sizeof(pktReq) + pktReq.cubFileName);
         
         ok = End(pkt);
         
-            if (res == sizeof(pktReq) + pktReq.cubFileName && ok) {
-                return NetCloudResult::OK;
-            } else {
-                return NetCloudResult::Network;
-            }
+		if (res == sizeof(pktReq) + pktReq.cubFileName && ok) {
+			return NetCloudResult::OK;
+		} else {
+			return NetCloudResult::Network;
+		}
     }
 
     template<typename T>
@@ -434,18 +360,6 @@ public:
         } else {
             return NetCloudResult::Network;
         }
-        
-        //res = recv(m_hSocket, (char*)pktResult, sizeof(*pktResult), 0);
-        //assert(res == sizeof(*pktResult));
-        //if (res == sizeof(*pktResult)) {
-            //if (AuthenticateServerPacket(*pktResult, m_sessionKey)) {
-                //return NetCloudResult::OK;
-            //} else {
-                //return NetCloudResult::Unauthorized;
-            //}
-        //} else {
-            //return NetCloudResult::Network;
-        //}
     }
 
     NetCloudResult ReceiveGenericResult(Packet_General_Result* pktResult) {
@@ -526,35 +440,19 @@ public:
 
     NetCloudResult SendAchievementOperationPacket(const char* pchName, int op) {
         NetCloudResult ret = NetCloudResult::Fail;
-        //HMAC_CTX ctx;
-        //unsigned int cubMD = 32;
         int res;
         bool ok;
         Packet_Achievement pktAchi;
         SignedPacket pkt;
 
-        //pktAchi.hdr.cmd = CMD_ACHIEVEMENT;
         if(pchName) {
             pktAchi.cubNameLen = strlen(pchName);
         } else {
             pktAchi.cubNameLen = 0;
         }
         pktAchi.op = op;
-        //pktAchi.hdr.len = sizeof(pktAchi) + pktAchi.cubNameLen;
         pktAchi.hdr = MakeHeader(CMD_ACHIEVEMENT, sizeof(pktAchi) + pktAchi.cubNameLen);
 
-        //memset(pktAchi.hdr.hmac, 0, HMAC_LEN);
-
-        //HMAC_CTX_init(&ctx);
-        //HMAC_Init_ex(&ctx, m_sessionKey, SESSION_KEY_LEN, EVP_sha256(), NULL);
-        //HMAC_Update(&ctx, (unsigned char*)&pktAchi, sizeof(pktAchi));
-        //HMAC_Update(&ctx, (unsigned char*)pchName, pktAchi.cubNameLen);
-        //HMAC_Final(&ctx, pktAchi.hdr.hmac, &cubMD);
-        //HMAC_CTX_cleanup(&ctx);
-
-        //res = send(m_hSocket, (char*)&pktAchi, sizeof(pktAchi), 0);
-        //res += send(m_hSocket, (char*)pchName, pktAchi.cubNameLen, 0);
-        //assert(res == sizeof(pktAchi) + pktAchi.cubNameLen);
         BEGIN_PACKET(pkt);
         res  = Send(pkt, pktAchi);
         if(pktAchi.cubNameLen > 0) {
