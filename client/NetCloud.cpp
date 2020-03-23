@@ -45,15 +45,15 @@ static void CreateSessionKey(Session_Key& session, const uint8 shared[64], const
 
 struct SignedPacket {
     SOCKET socket;
-    HMAC_CTX ctx;
+    HMAC_CTX* ctx;
     int c;
 };
 
 using Signed_Packet = SignedPacket;
 
 static void Begin(SignedPacket& pkt, SOCKET s, const Session_Key& session) {
-    HMAC_CTX_init(&pkt.ctx);
-    HMAC_Init_ex(&pkt.ctx, session, SESSION_KEY_LEN, EVP_sha256(), NULL);
+    pkt.ctx = HMAC_CTX_new();
+    HMAC_Init_ex(pkt.ctx, session, SESSION_KEY_LEN, EVP_sha256(), NULL);
     pkt.c = 0; // init:0, sending:1, recving:2
     pkt.socket = s;
 }
@@ -61,7 +61,7 @@ static void Begin(SignedPacket& pkt, SOCKET s, const Session_Key& session) {
 static int Send(SignedPacket& pkt, const void* buf, int len) {
     assert(pkt.c == 1 || pkt.c == 0);
     pkt.c = 1;
-    HMAC_Update(&pkt.ctx, (unsigned char*)buf, len);
+    HMAC_Update(pkt.ctx, (unsigned char*)buf, len);
     return send(pkt.socket, (char*)buf, len, 0);
 }
 
@@ -74,7 +74,7 @@ static int Recv(SignedPacket& pkt, void* buf, int len) {
     assert(pkt.c == 2 || pkt.c == 0);
     pkt.c = 2;
     int ret = recv(pkt.socket, (char*)buf, len, 0);
-    HMAC_Update(&pkt.ctx, (unsigned char*)buf, ret);
+    HMAC_Update(pkt.ctx, (unsigned char*)buf, ret);
     return ret;
 }
 
@@ -92,8 +92,8 @@ static bool End(SignedPacket& pkt) {
     
     memset(hmacCalc, 0, 32);
     
-    HMAC_Final(&pkt.ctx, hmacCalc, &cubMD);
-    HMAC_CTX_cleanup(&pkt.ctx);
+    HMAC_Final(pkt.ctx, hmacCalc, &cubMD);
+    HMAC_CTX_free(pkt.ctx);
     
     switch(pkt.c) {
         case 1:
